@@ -1,20 +1,20 @@
-import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import GlassCard from "../components/common/GlassCard";
 
-import RecommendationCard from "../components/regression/RecommendationCard";
-import TargetSelector from "../components/regression/TargetSelector";
+import DownloadModelCard from "../components/regression/DownloadModelCard";
 import FeatureSelector from "../components/regression/FeatureSelector";
 import NullStrategySelector from "../components/regression/NullStrategySelector";
-import RegressionResult from "../components/regression/RegressionResult";
+import RecommendationCard from "../components/regression/RecommendationCard";
 import RegressionPlot from "../components/regression/RegressionPlot";
-import DownloadModelCard from "../components/regression/DownloadModelCard";
+import RegressionResult from "../components/regression/RegressionResult";
+import TargetSelector from "../components/regression/TargetSelector";
 
 import { runRegression } from "../api/regression.api";
-import { getRegressionPlot } from "../api/regression.plot.api";
 import { useDatasetStore } from "../store/useDatasetStore";
 import { useRegressionStore } from "../store/useRegressionStore";
-import type { RegressionPlotResponse } from "../types/plot";
+
+// getRegressionPlot import removed — plot data now comes from the regression result directly.
+// plot state removed — result.plot_data is read inside RegressionPlot component via the store.
 
 export default function RegressionPage() {
   const navigate = useNavigate();
@@ -32,10 +32,8 @@ export default function RegressionPage() {
     setNullStrategy,
     setResult,
     setLoading,
-    setError
+    setError,
   } = useRegressionStore();
-
-  const [plot, setPlot] = useState<RegressionPlotResponse | null>(null);
 
   const canRun =
     !!file &&
@@ -46,18 +44,12 @@ export default function RegressionPage() {
 
   const handleRun = async () => {
     if (!file) return;
-
     setLoading(true);
     setError(null);
-
     try {
-      const res = await runRegression({
-        file,
-        target,
-        features,
-        nullStrategy
-      });
+      const res = await runRegression({ file, target, features, nullStrategy });
       setResult(res);
+      // plot_data is inside res — RegressionPlot reads it from the store automatically
     } catch {
       setError("Regression failed");
     } finally {
@@ -65,14 +57,12 @@ export default function RegressionPage() {
     }
   };
 
-  useEffect(() => {
-    if (!result) return;
-    getRegressionPlot()
-      .then(setPlot)
-      .catch(() => setPlot(null));
-  }, [result]);
+  // useEffect for getRegressionPlot removed entirely
 
-  const buildPlotSvg = (data: RegressionPlotResponse) => {
+  const buildPlotSvg = () => {
+    const data = result?.plot_data;
+    if (!data) return "<p style=\"color:#64748b\">Plot not available.</p>";
+
     const toNumber = (v: unknown): number | null => {
       if (typeof v === "number" && Number.isFinite(v)) return v;
       if (typeof v === "string") {
@@ -101,20 +91,20 @@ export default function RegressionPage() {
       return `<p style="color:#64748b">No valid plot points to display.</p>`;
     }
 
-    const min = Math.min(...all.map(p => Math.min(p.x, p.y)));
-    const max = Math.max(...all.map(p => Math.max(p.x, p.y)));
+    const min = Math.min(...all.map((p) => Math.min(p.x, p.y)));
+    const max = Math.max(...all.map((p) => Math.max(p.x, p.y)));
     const scale = (v: number) => ((v - min) / (max - min || 1)) * 100;
 
     const trainCircles = train
       .map(
-        p =>
+        (p) =>
           `<circle cx="${scale(p.x)}" cy="${100 - scale(p.y)}" r="1.4" fill="rgba(125, 211, 252, 0.95)" />`
       )
       .join("");
 
     const testCircles = test
       .map(
-        p =>
+        (p) =>
           `<circle cx="${scale(p.x)}" cy="${100 - scale(p.y)}" r="1.4" fill="rgba(255, 90, 90, 0.95)" />`
       )
       .join("");
@@ -143,7 +133,7 @@ export default function RegressionPage() {
   const handleDownloadPdf = () => {
     if (!result) return;
 
-    const plotHtml = plot ? buildPlotSvg(plot) : "<p style=\"color:#64748b\">Plot not available.</p>";
+    const plotHtml = buildPlotSvg();
     const html = `
       <!doctype html>
       <html>
@@ -177,32 +167,6 @@ export default function RegressionPage() {
               height: 320px;
               overflow: hidden;
             }
-            .regression-diagonal {
-              position: absolute;
-              inset: 0;
-              pointer-events: none;
-            }
-            .regression-diagonal::after {
-              content: "";
-              position: absolute;
-              width: 140%;
-              height: 2px;
-              background: linear-gradient(90deg, rgba(255,255,255,0.2), rgba(255,255,255,0.7), rgba(255,255,255,0.2));
-              top: 50%;
-              left: -20%;
-              transform: rotate(-45deg);
-            }
-            .reg-point {
-              position: absolute;
-              width: 7px;
-              height: 7px;
-              border-radius: 50%;
-              transform: translate(-50%, -50%);
-              border: 1px solid rgba(255,255,255,0.65);
-            }
-            .reg-point.train { background: rgba(125, 211, 252, 0.95); }
-            .reg-point.test { background: rgba(255, 90, 90, 0.95); }
-            .reg-point::after { display: none; }
             .reg-axis-x, .reg-axis-y {
               position: absolute;
               font-size: 11px;
@@ -262,10 +226,8 @@ export default function RegressionPage() {
       {/* CONFIG */}
       {eda && (
         <>
-          {/* 🔥 AUTO RECOMMENDATION */}
           <RecommendationCard />
 
-          {/* MANUAL SETUP */}
           <TargetSelector
             numericColumns={eda.columns.numeric}
             value={target}
@@ -279,10 +241,7 @@ export default function RegressionPage() {
             onChange={setFeatures}
           />
 
-          <NullStrategySelector
-            value={nullStrategy}
-            onChange={setNullStrategy}
-          />
+          <NullStrategySelector value={nullStrategy} onChange={setNullStrategy} />
 
           <GlassCard>
             <button disabled={!canRun || loading} onClick={handleRun}>
@@ -306,7 +265,8 @@ export default function RegressionPage() {
               {result.model_comparison[result.best_model] && (
                 <p>
                   <strong>Test R²:</strong>{" "}
-                  {result.model_comparison[result.best_model].test_r2 ?? "N/A"} &nbsp;|&nbsp;
+                  {result.model_comparison[result.best_model].test_r2 ?? "N/A"}{" "}
+                  &nbsp;|&nbsp;
                   <strong>Test MSE:</strong>{" "}
                   {result.model_comparison[result.best_model].test_mse ?? "N/A"}
                 </p>
@@ -314,7 +274,8 @@ export default function RegressionPage() {
             </div>
             <RegressionPlot />
           </div>
-          <DownloadModelCard filename={result.saved_model_filename} />
+          {/* DownloadModelCard no longer needs a filename prop */}
+          <DownloadModelCard />
           <GlassCard>
             <button onClick={handleDownloadPdf}>Download PDF Report</button>
           </GlassCard>

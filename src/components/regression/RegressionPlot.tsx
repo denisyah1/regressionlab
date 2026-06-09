@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { getRegressionPlot } from "../../api/regression.plot.api";
-import type { RegressionPlotResponse } from "../../types/plot";
+// GET /api/regression/plot no longer exists.
+// Plot data is now read directly from the regression result stored in useRegressionStore.
+import { useRegressionStore } from "../../store/useRegressionStore";
 import GlassCard from "../common/GlassCard";
 
 type Point = { x: number; y: number };
@@ -26,29 +26,15 @@ function buildPoints(actual: number[], pred: number[]): Point[] {
 }
 
 export default function RegressionPlot() {
-  const [plot, setPlot] = useState<RegressionPlotResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    getRegressionPlot()
-      .then(setPlot)
-      .catch(() => setError("Plot not available yet"));
-  }, []);
-
-  if (error) {
-    return (
-      <GlassCard>
-        <h2>Actual vs Predicted</h2>
-        <p className="text-muted">{error}</p>
-      </GlassCard>
-    );
-  }
+  // Read plot_data directly from the regression result — no extra fetch needed
+  const result = useRegressionStore((s) => s.result);
+  const plot = result?.plot_data ?? null;
 
   if (!plot) {
     return (
       <GlassCard>
         <h2>Actual vs Predicted</h2>
-        <p className="text-muted">Loading plot…</p>
+        <p className="text-muted">Run regression to see the plot.</p>
       </GlassCard>
     );
   }
@@ -66,11 +52,9 @@ export default function RegressionPlot() {
     );
   }
 
-  const min = Math.min(...all.map(p => Math.min(p.x, p.y)));
-  const max = Math.max(...all.map(p => Math.max(p.x, p.y)));
-
-  const scale = (v: number) =>
-    ((v - min) / (max - min || 1)) * 100;
+  const min = Math.min(...all.map((p) => Math.min(p.x, p.y)));
+  const max = Math.max(...all.map((p) => Math.max(p.x, p.y)));
+  const scale = (v: number) => ((v - min) / (max - min || 1)) * 100;
 
   return (
     <GlassCard>
@@ -81,7 +65,7 @@ export default function RegressionPlot() {
           {/* perfect fit line */}
           <div className="regression-diagonal" />
 
-          {/* train */}
+          {/* train points */}
           {train.map((p, i) => (
             <div
               key={`train-${i}`}
@@ -89,12 +73,12 @@ export default function RegressionPlot() {
               data-tooltip={`Train | Actual: ${p.x.toFixed(2)} • Pred: ${p.y.toFixed(2)}`}
               style={{
                 left: `${scale(p.x)}%`,
-                top: `${100 - scale(p.y)}%`
+                top: `${100 - scale(p.y)}%`,
               }}
             />
           ))}
 
-          {/* test */}
+          {/* test points */}
           {test.map((p, i) => (
             <div
               key={`test-${i}`}
@@ -102,12 +86,11 @@ export default function RegressionPlot() {
               data-tooltip={`Test | Actual: ${p.x.toFixed(2)} • Pred: ${p.y.toFixed(2)}`}
               style={{
                 left: `${scale(p.x)}%`,
-                top: `${100 - scale(p.y)}%`
+                top: `${100 - scale(p.y)}%`,
               }}
             />
           ))}
 
-          {/* axis */}
           <div className="reg-axis-x">Actual</div>
           <div className="reg-axis-y">Predicted</div>
         </div>
